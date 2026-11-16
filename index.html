@@ -49,16 +49,22 @@ function falhou(e) {
     '<a href="antigo.html">Abrir do jeito antigo</a><br><br><small>' + String(e && e.message || e) + '</small>';
 }
 
-function buscar(q) { return fetch(EXEC + '?app=1&v=3' + q, { credentials: 'omit', redirect: 'follow' }).then(r => r.json()); }
+function buscar(q) { return fetch(EXEC + '?app=1&v=5' + q, { credentials: 'omit', redirect: 'follow' }).then(r => r.json()); }
 buscar('')
   .then(m => {
     if (!m || !m.partes) throw new Error('Resposta vazia.');
     const pedidos = [];
     for (let i = 0; i < m.partes; i++) pedidos.push(buscar('&i=' + i));
     return Promise.all(pedidos).then(ps => {
-      const html = ps.map(x => x.p || '').join('');
-      if (html.length !== m.n) throw new Error('Programa veio incompleto (' + html.length + ' de ' + m.n + ').');
-      return html;
+      const b64 = ps.map(x => x.p || '').join('');
+      if (b64.length !== m.n) throw new Error('Programa veio incompleto (' + b64.length + ' de ' + m.n + ').');
+      const bin = atob(b64), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return crypto.subtle.digest('SHA-256', bytes).then(h => {
+        const hex = Array.from(new Uint8Array(h)).map(x => x.toString(16).padStart(2, '0')).join('');
+        if (m.sha && hex !== m.sha) throw new Error('Programa veio alterado (conferência falhou).');
+        return new TextDecoder('utf-8').decode(bytes).split('<?= chave ?>').join('LOGIN');
+      });
     });
   })
   .then(html => {
@@ -70,7 +76,7 @@ buscar('')
     const diag = [];
     scripts.forEach((t, i) => { try { new Function(t); } catch (e) { diag.push('script ' + i + ': ' + e.message + ' | tamanho ' + t.length + ' | linhas ' + t.split('\n').length + ' | fim: ' + t.slice(-50).replace(/\n/g, ' ')); } });
     scripts.forEach(t => { const n = document.createElement('script'); n.textContent = t; document.body.appendChild(n); });
-    if (diag.length) { const d = document.createElement('pre'); d.style.cssText = 'white-space:pre-wrap;font-size:12px;padding:10px;background:#fff3cd'; d.textContent = 'DIAGNÓSTICO (versão 3, html ' + html.length + '):\n' + diag.join('\n'); document.body.prepend(d); }
+    if (diag.length) { const d = document.createElement('pre'); d.style.cssText = 'white-space:pre-wrap;font-size:12px;padding:10px;background:#fff3cd'; d.textContent = 'DIAGNÓSTICO (versão 5, html ' + html.length + '):\n' + diag.join('\n'); document.body.prepend(d); }
   })
   .catch(falhou);
 </script>
