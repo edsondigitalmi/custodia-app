@@ -49,11 +49,20 @@ function falhou(e) {
     '<a href="antigo.html">Abrir do jeito antigo</a><br><br><small>' + String(e && e.message || e) + '</small>';
 }
 
-fetch(EXEC + '?app=1', { credentials: 'omit', redirect: 'follow' })
-  .then(r => r.json())
-  .then(d => {
-    if (!d || !d.html) throw new Error('Resposta vazia.');
-    const doc = new DOMParser().parseFromString(d.html, 'text/html');
+function buscar(q) { return fetch(EXEC + '?app=1' + q, { credentials: 'omit', redirect: 'follow' }).then(r => r.json()); }
+buscar('')
+  .then(m => {
+    if (!m || !m.partes) throw new Error('Resposta vazia.');
+    const pedidos = [];
+    for (let i = 0; i < m.partes; i++) pedidos.push(buscar('&i=' + i));
+    return Promise.all(pedidos).then(ps => {
+      const html = ps.map(x => x.p || '').join('');
+      if (html.length !== m.n) throw new Error('Programa veio incompleto (' + html.length + ' de ' + m.n + ').');
+      return html;
+    });
+  })
+  .then(html => {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
     doc.head.querySelectorAll('style').forEach(s => { const n = document.createElement('style'); n.textContent = s.textContent; document.head.appendChild(n); });
     const scripts = Array.from(doc.body.querySelectorAll('script')).map(s => s.textContent);
     doc.body.querySelectorAll('script').forEach(s => s.remove());
