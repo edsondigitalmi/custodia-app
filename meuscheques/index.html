@@ -26,12 +26,12 @@ html, body { margin: 0; background: #f4f6f8; }
 // Google do navegador (credentials: 'omit'). Assim não dá o erro "Não foi possível abrir o arquivo" quando há várias
 // contas Google logadas. Aqui não há dados nem senhas: a chave do link vem na própria URL (?k=...) e não é guardada.
 const EXEC = 'https://script.google.com/macros/s/AKfycby63M2skTJ-r6dQd5Di4etb04dZioR1Qe77DSkBp-t7mSD5BJT7ONr0UpDMdu5uuaIm/exec';
-const CHAVE = (new URLSearchParams(location.search).get('k') || '').replace(/[^a-f0-9]/g, '');
+const K_URL = (new URLSearchParams(location.search).get('k') || '').replace(/[^a-f0-9]/g, '');
 const CACHE = 'meuscheques_programa_v1';
 
 function falhou(e, semTentar) {
   document.getElementById('carga').innerHTML = (semTentar ? '' : 'Não consegui carregar o programa agora.<br><br><a href="javascript:location.reload()">Tentar de novo</a><br><br>') +
-    (CHAVE && !semTentar ? '<a href="' + EXEC + '?k=' + CHAVE + '">Abrir o link direto do Google</a><br><br>' : '') +
+    (K_URL && !semTentar ? '<a href="' + EXEC + '?k=' + K_URL + '">Abrir o link direto do Google</a><br><br>' : '') +
     '<small>' + String(e && e.message || e).replace(/</g, '&lt;') + '</small>';
 }
 
@@ -64,12 +64,12 @@ function baixarPrograma() {
   });
 }
 
-if (!CHAVE) {
+if (!K_URL) {
   falhou(new Error('Link incompleto. Use o link inteiro, com a chave no final (…/?k=…). Peça o link de novo em Mais → Ajustes e link.'), true);
 } else {
   baixarPrograma().then(html => {
     window.MC_API_URL = EXEC;   // o programa vê isto e usa fetch em vez de google.script.run
-    html = html.split('<?= chave ?>').join(CHAVE);
+    html = html.split('<?= chave ?>').join(K_URL);
     const doc = new DOMParser().parseFromString(html, 'text/html');
     if (doc.title) document.title = doc.title;
     doc.head.querySelectorAll('style').forEach(s => { const n = document.createElement('style'); n.textContent = s.textContent; document.head.appendChild(n); });
