@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Meus Cheques</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Meus Cheques">
+<meta name="theme-color" content="#3f1a63">
+<link rel="apple-touch-icon" href="mc-icon-180.png">
+<link rel="icon" type="image/png" href="mc-icon-192.png">
+<style>
+html, body { margin: 0; background: #f4f6f8; }
+#carga { font: 20px Arial, sans-serif; text-align: center; padding: 70px 24px; color: #3f1a63; }
+#carga a { color: #0f6b7a; }
+#carga small { color: #5b6470; word-break: break-word; }
+</style>
+</head>
+<body>
+<div id="carga">⏳ Carregando…</div>
+<script>
+// Esta página só carrega o programa Meus Cheques (que fica no Google Apps Script) e fala com ele SEM mandar as contas
+// Google do navegador (credentials: 'omit'). Assim não dá o erro "Não foi possível abrir o arquivo" quando há várias
+// contas Google logadas. Aqui não há dados nem senhas: a chave do link vem na própria URL (?k=...) e não é guardada.
+const EXEC = 'https://script.google.com/macros/s/AKfycby63M2skTJ-r6dQd5Di4etb04dZioR1Qe77DSkBp-t7mSD5BJT7ONr0UpDMdu5uuaIm/exec';
+const CHAVE = (new URLSearchParams(location.search).get('k') || '').replace(/[^a-f0-9]/g, '');
+const CACHE = 'meuscheques_programa_v1';
+
+function falhou(e, semTentar) {
+  document.getElementById('carga').innerHTML = (semTentar ? '' : 'Não consegui carregar o programa agora.<br><br><a href="javascript:location.reload()">Tentar de novo</a><br><br>') +
+    (CHAVE && !semTentar ? '<a href="' + EXEC + '?k=' + CHAVE + '">Abrir o link direto do Google</a><br><br>' : '') +
+    '<small>' + String(e && e.message || e).replace(/</g, '&lt;') + '</small>';
+}
+
+function buscar(q) {
+  return fetch(EXEC + '?app=1&v=1' + q, { credentials: 'omit', redirect: 'follow' }).then(r => r.json());
+}
+function doCache() { try { return JSON.parse(localStorage.getItem(CACHE) || 'null'); } catch (e) { return null; } }
+function guardar(sha, html) { try { localStorage.setItem(CACHE, JSON.stringify({ sha: sha, html: html })); } catch (e) { /* sem cache, sem problema */ } }
+
+function baixarPrograma() {
+  return buscar('').then(m => {
+    if (!m || !m.partes) throw new Error('O servidor não devolveu o programa (resposta vazia).');
+    const c = doCache();
+    if (c && m.sha && c.sha === m.sha && c.html) return c.html;     // o programa não mudou: usa a cópia guardada
+    const pedidos = [];
+    for (let i = 0; i < m.partes; i++) pedidos.push(buscar('&i=' + i));
+    return Promise.all(pedidos).then(ps => {
+      const b64 = ps.map(x => x.p || '').join('');
+      if (b64.length !== m.n) throw new Error('Programa veio incompleto (' + b64.length + ' de ' + m.n + ').');
+      const bin = atob(b64), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return crypto.subtle.digest('SHA-256', bytes).then(h => {
+        const hex = Array.from(new Uint8Array(h)).map(x => x.toString(16).padStart(2, '0')).join('');
+        if (m.sha && hex !== m.sha) throw new Error('Programa veio alterado (conferência falhou).');
+        const html = new TextDecoder('utf-8').decode(bytes);
+        guardar(m.sha || hex, html);
+        return html;
+      });
+    });
+  });
+}
+
+if (!CHAVE) {
+  falhou(new Error('Link incompleto. Use o link inteiro, com a chave no final (…/?k=…). Peça o link de novo em Mais → Ajustes e link.'), true);
+} else {
+  baixarPrograma().then(html => {
+    window.MC_API_URL = EXEC;   // o programa vê isto e usa fetch em vez de google.script.run
+    html = html.split('<?= chave ?>').join(CHAVE);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    if (doc.title) document.title = doc.title;
+    doc.head.querySelectorAll('style').forEach(s => { const n = document.createElement('style'); n.textContent = s.textContent; document.head.appendChild(n); });
+    const scripts = Array.from(doc.body.querySelectorAll('script')).map(s => s.textContent);
+    doc.body.querySelectorAll('script').forEach(s => s.remove());
+    document.body.innerHTML = doc.body.innerHTML;
+    scripts.forEach(t => { const n = document.createElement('script'); n.textContent = t; document.body.appendChild(n); });
+  }).catch(falhou);
+}
+</script>
+</body>
+</html>
